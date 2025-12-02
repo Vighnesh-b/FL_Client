@@ -9,6 +9,8 @@ def send_local_model():
     file = request.files.get("file")
     client_id = request.form.get("client_id")
     federated_server_url = request.form.get("federated_server_url")
+    cur_round=request.form.get("cur_round")
+    dataset_size=request.form.get("dataset_size")
 
     if file is None:
         return jsonify({"success": False, "error": "No file received"}), 400
@@ -20,7 +22,10 @@ def send_local_model():
     response = requests.post(
         upload_url,
         files={"file": (f"client_{client_id}.pth", file)},
-        data={"client_id": client_id}
+        data={"client_id": client_id,
+              "cur_round":cur_round,
+              "dataset_size":dataset_size
+              }
     )
 
     if response.status_code == 200:

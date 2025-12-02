@@ -2,6 +2,6 @@ data
 client_checkpoints
 global_models
 venv
-test
+test.py
 logs.csv
 __pycache__

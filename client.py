@@ -1,7 +1,3 @@
-# - send local weights
-# - pull global model
-# - train for 3 epochs using local dataset
-
 import os,csv
 from datetime import datetime
 import time
@@ -25,6 +21,7 @@ class FederatedClient:
             self._init_log_file()
 
         self.cur_round=cur_round
+
 
         self.train_loader=train_loader
         self.val_loader=val_loader
@@ -76,7 +73,7 @@ class FederatedClient:
         print(f"[Client {self.client_id}] Saved local checkpoint → {ckpt_path}")
         return ckpt_path
 
-    def send_update(self, local_model_path):
+    def send_update(self,federated_server_url, local_model_path):
         api_url = "http://127.0.0.1:5000/api/send-local-model"
 
         # Open the checkpoint file
@@ -88,6 +85,7 @@ class FederatedClient:
             data = {
                 "client_id": self.client_id,
                 "dataset_size":len(self.train_loader.dataset),
+                "federated_server_url":federated_server_url,
                 "cur_round":self.cur_round
             }
 
@@ -102,8 +100,8 @@ class FederatedClient:
         return None
 
 
-    def pull_global_model(self):
-        api_url = "http://127.0.0.1:8000/api/get-global-model"
+    def pull_global_model(self,federated_server_url):
+        api_url = f"{federated_server_url}/api/get-global-model"
         local_save_path = "global_models/global_latest.pth"
         response = requests.get(api_url, stream=True)
         if response.status_code != 200:
@@ -126,18 +124,7 @@ class FederatedClient:
 
         print(f"\nDownload complete → {local_save_path}")
 
-    def run(self):
-        print(f"\n[Client {self.client_id}] ==== Round {self.cur_round} ====")
 
-        self.pull_global_model()
-        self.wait_for_global()
-        self.train_one_round()
-
-        local_model_path=self.save_local_checkpoint()
-
-        self.send_update(local_model_path)
-
-        print(f"[Client {self.client_id}] Round {self.cur_round} completed.\n")
 
     
 
