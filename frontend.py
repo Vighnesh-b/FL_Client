@@ -514,27 +514,27 @@ class FederatedClientGUI:
             self.log_message("Loading global model...")
             self.client.wait_for_global()
             
-            # if self.stop_requested:
-            #     raise InterruptedError("Training stopped by user")
+            if self.stop_requested:
+                raise InterruptedError("Training stopped by user")
             
-            # self.log_message("Training locally...")
-            # # Note: You might need to modify train_one_round to check self.stop_requested periodically
-            # self.client.train_one_round()
+            self.log_message("Training locally...")
+            # Note: You might need to modify train_one_round to check self.stop_requested periodically
+            self.client.train_one_round()
             
-            # if self.stop_requested:
-            #     raise InterruptedError("Training stopped by user")
+            if self.stop_requested:
+                raise InterruptedError("Training stopped by user")
             
-            # # Read latest metrics
-            # self.update_metrics_from_log()
+            # Read latest metrics
+            self.update_metrics_from_log()
             
-            # if self.stop_requested:
-            #     raise InterruptedError("Training stopped by user")
+            if self.stop_requested:
+                raise InterruptedError("Training stopped by user")
             
-            # self.log_message("Saving checkpoint...")
-            # local_model_path = self.client.save_local_checkpoint()
+            self.log_message("Saving checkpoint...")
+            local_model_path = self.client.save_local_checkpoint()
             
-            # if self.stop_requested:
-            #     raise InterruptedError("Training stopped by user")
+            if self.stop_requested:
+                raise InterruptedError("Training stopped by user")
             
             self.log_message("Sending update to server...")
             self.client.send_update(self.server_url,os.path.join('client_checkpoints',"round_1.pth"))
