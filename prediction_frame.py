@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import os
 from predict_mask import predict_and_evaluate_mask
-
+import torch
 class PredictionFrame:
     """Handles the prediction UI and functionality"""
     
@@ -214,36 +214,7 @@ class PredictionFrame:
             state=tk.DISABLED
         )
         self.predict_btn.pack(fill=tk.X)
-        
-        # Options
-        options_frame = tk.LabelFrame(
-            left_panel,
-            text="Visualization Options",
-            font=("Arial", 12, "bold"),
-            bg="#ffffff",
-            padx=15,
-            pady=15
-        )
-        options_frame.pack(fill=tk.X, padx=15, pady=(0, 15))
-        
-        self.show_overlay_var = tk.BooleanVar(value=True)
-        tk.Checkbutton(
-            options_frame,
-            text="Show overlay",
-            variable=self.show_overlay_var,
-            font=("Arial", 10),
-            bg="#ffffff"
-        ).pack(anchor="w")
-        
-        self.show_confidence_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(
-            options_frame,
-            text="Show confidence",
-            variable=self.show_confidence_var,
-            font=("Arial", 10),
-            bg="#ffffff"
-        ).pack(anchor="w")
-        
+                
         # Right Panel - Visualization (Scrollable)
         right_container = tk.Frame(pred_main, bg="#f0f0f0")
         right_container.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
@@ -398,11 +369,9 @@ class PredictionFrame:
             
             # Show success message with dice scores if available
             if dice_scores is not None:
-                avg_dice = dice_scores.mean().item()
                 messagebox.showinfo(
                     "Prediction Complete", 
                     f"Prediction successful!\n\n"
-                    f"Average Dice Score: {avg_dice:.4f}\n"
                     f"Image: {os.path.basename(self.loaded_image_path)}\n"
                     f"Ground Truth: {os.path.basename(self.loaded_groundtruth_path)}\n"
                     f"Model: {'Latest checkpoint' if not self.loaded_model_path else os.path.basename(self.loaded_model_path)}"
@@ -430,46 +399,36 @@ class PredictionFrame:
     def display_prediction_results(self, pred_mask, dice_scores, image, mask):
         import matplotlib.pyplot as plt
         from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-        import torch
         import tkinter as tk
 
-        # -----------------------------
-        # Prepare data
-        # -----------------------------
-        self.pred_mask = pred_mask
-        self.gt_mask = mask
-        self.image_tensor = image
-        self.dice_scores = dice_scores
+        # Store tensors
+        self.pred_mask = pred_mask        # torch.Size([1, D, H, W])
+        self.gt_mask = mask               # torch.Size([1, D, H, W])
+        self.image_tensor = image         # torch.Size([3, D, H, W])
 
         self.depth = pred_mask.shape[1]
-        self.current_slice = self.depth // 2     # middle slice
+        self.current_slice = self.depth // 2  # Start in the middle
 
-        # -----------------------------
-        # Build Matplotlib Figure
-        # -----------------------------
-        self.fig = plt.Figure(figsize=(12, 5), dpi=140)
+        # Create figure with 1 row, 5 columns
+        self.fig = plt.Figure(figsize=(18, 5), dpi=140)
         self.fig.patch.set_facecolor("#fafafa")
 
-        self.ax_image = self.fig.add_subplot(1, 3, 1)
-        self.ax_gt     = self.fig.add_subplot(1, 3, 2)
-        self.ax_pred   = self.fig.add_subplot(1, 3, 3)
+        self.ax_c0   = self.fig.add_subplot(1, 5, 1)
+        self.ax_c1   = self.fig.add_subplot(1, 5, 2)
+        self.ax_c2   = self.fig.add_subplot(1, 5, 3)
+        self.ax_gt   = self.fig.add_subplot(1, 5, 4)
+        self.ax_pred = self.fig.add_subplot(1, 5, 5)
 
-        # -----------------------------
-        # Draw first (middle) slice
-        # -----------------------------
+        # Initial draw
         self._draw_slice(self.current_slice)
 
-        # -----------------------------
-        # Embed figure in Tkinter
-        # -----------------------------
+        # Embed in Tkinter
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.pred_canvas_frame)
         self.canvas.draw()
-        self.canvas_widget = self.canvas.get_tk_widget()
-        self.canvas_widget.pack(fill=tk.BOTH, expand=True)
+        canvas_widget = self.canvas.get_tk_widget()
+        canvas_widget.pack(fill=tk.BOTH, expand=True)
 
-        # -----------------------------
-        # Add Z-axis slider
-        # -----------------------------
+        # Slider frame
         slider_frame = tk.Frame(self.pred_canvas_frame, bg="#ecf0f1")
         slider_frame.pack(fill=tk.X, pady=10)
 
@@ -485,43 +444,74 @@ class PredictionFrame:
             from_=0,
             to=self.depth - 1,
             orient=tk.HORIZONTAL,
-            length=800,
+            length=900,
             command=self._on_slice_change,
             bg="#ecf0f1"
         )
         self.slice_slider.set(self.current_slice)
         self.slice_slider.pack()
+
+
+    def _compute_dice(self, pred_slice, gt_slice):
+        """Compute Dice score for a single 2D slice."""
+        import numpy as np
+
+        pred_bin = (pred_slice > 0.5).astype(np.float32)
+        gt_bin   = (gt_slice > 0.5).astype(np.float32)
+
+        intersection = (pred_bin * gt_bin).sum()
+        denom = pred_bin.sum() + gt_bin.sum() + 1e-8
+
+        return (2 * intersection) / denom
+
+
     def _draw_slice(self, z):
         # Clear axes
-        self.ax_image.clear()
+        self.ax_c0.clear()
+        self.ax_c1.clear()
+        self.ax_c2.clear()
         self.ax_gt.clear()
         self.ax_pred.clear()
 
-        # 1. Image slice
-        img_slice = self.image_tensor[0, z].cpu().numpy()
-        self.ax_image.imshow(img_slice, cmap="gray")
-        self.ax_image.set_title(f"Image\nSlice {z}")
-        self.ax_image.axis("off")
+        # --- Channels ---
+        c0 = self.image_tensor[0, z].cpu().numpy()
+        c1 = self.image_tensor[1, z].cpu().numpy()
+        c2 = self.image_tensor[2, z].cpu().numpy()
 
-        # 2. Ground truth slice
-        gt_slice = self.gt_mask[0, z].cpu().numpy()
-        self.ax_gt.imshow(gt_slice, cmap="gray")
+        self.ax_c0.imshow(c0, cmap="gray")
+        self.ax_c0.set_title(f"Channel 0\nSlice {z}")
+        self.ax_c0.axis("off")
+
+        self.ax_c1.imshow(c1, cmap="gray")
+        self.ax_c1.set_title("Channel 1")
+        self.ax_c1.axis("off")
+
+        self.ax_c2.imshow(c2, cmap="gray")
+        self.ax_c2.set_title("Channel 2")
+        self.ax_c2.axis("off")
+
+        # --- Ground Truth ---
+        gt = self.gt_mask[0, z].cpu().numpy()
+        self.ax_gt.imshow(gt, cmap="gray")
         self.ax_gt.set_title("Ground Truth")
         self.ax_gt.axis("off")
 
-        # 3. Prediction slice
-        pred_slice = self.pred_mask[0, z].cpu().numpy()
-        self.ax_pred.imshow(pred_slice, cmap="gray")
+        # --- Prediction ---
+        pred = self.pred_mask[0, z].cpu().numpy()
+        self.ax_pred.imshow(pred, cmap="gray")
 
-        if self.dice_scores is not None:
-            self.ax_pred.set_title(f"Prediction\nDice: {self.dice_scores[z]:.3f}")
-        else:
-            self.ax_pred.set_title("Prediction")
+        # Compute Dice *NOW*
+        dice = self._compute_dice(pred, gt)
 
+        self.ax_pred.set_title(f"Prediction\nDice: {dice:.4f}")
         self.ax_pred.axis("off")
 
-        self.fig.suptitle("Image • Ground Truth • Prediction", fontsize=16, fontweight="bold")
+        self.fig.suptitle("Image Channels • Ground Truth • Prediction",
+                        fontsize=16, fontweight="bold")
+
+
     def _on_slice_change(self, value):
         z = int(value)
         self._draw_slice(z)
         self.canvas.draw()
+
