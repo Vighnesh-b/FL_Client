@@ -10,6 +10,8 @@ from matplotlib.figure import Figure
 import requests
 import torch
 
+from prediction_frame import PredictionFrame
+
 class FederatedClientGUI:
     def __init__(self, root, model_fn, train_loader, val_loader, device=None):
         self.root = root
@@ -170,14 +172,32 @@ class FederatedClientGUI:
             bg="#2c3e50",
             fg="white"
         )
-        title_label.pack(pady=20)
+        title_label.pack(side=tk.LEFT, pady=20, padx=20)
+
+        predict_button = tk.Button(
+            header_frame,
+            text="🔍 Predict Mask",
+            command=self.show_prediction_frame,
+            font=("Arial", 12, "bold"),
+            bg="#9b59b6",
+            fg="white",
+            relief=tk.RAISED,
+            borderwidth=3,
+            padx=20,
+            pady=8,
+            cursor="hand2"
+        )
+        predict_button.pack(side=tk.RIGHT, pady=15, padx=20)
         
         # Main container
-        main_container = tk.Frame(self.root, bg="#f0f0f0")
-        main_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        self.content_container = tk.Frame(self.root, bg="#f0f0f0")
+        self.content_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+        self.training_frame = tk.Frame(self.content_container, bg="#f0f0f0")
+        self.training_frame.pack(fill=tk.BOTH, expand=True)
         
         # Left Panel - Controls and Current Metrics
-        left_panel = tk.Frame(main_container, bg="#ffffff", relief=tk.RAISED, borderwidth=2)
+        left_panel = tk.Frame(self.training_frame, bg="#ffffff", relief=tk.RAISED, borderwidth=2)
         left_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
         
         # Control Section
@@ -330,7 +350,7 @@ class FederatedClientGUI:
         self.log_text.pack(fill=tk.BOTH, expand=True)
         
         # Right Panel - History and Visualization
-        right_panel = tk.Frame(main_container, bg="#ffffff", relief=tk.RAISED, borderwidth=2)
+        right_panel = tk.Frame(self.training_frame, bg="#ffffff", relief=tk.RAISED, borderwidth=2)
         right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         
         # History Button
@@ -386,7 +406,33 @@ class FederatedClientGUI:
         # Initial log message
         self.log_message(f"Client {self.client.client_id} initialized successfully")
         self.log_message(f"Starting at Round {self.client.cur_round}")
+
+        self.prediction_frame_handler = PredictionFrame(
+            parent=self.content_container,
+            client=self.client,
+            device=self.device,
+            update_status_callback=self.update_status
+        )
+
+    def show_prediction_frame(self):
+        """Switch to prediction frame"""
+        # Hide training frame
+        self.training_frame.pack_forget()
         
+        # Create and show prediction frame
+        if not self.prediction_frame_handler.frame:
+            self.prediction_frame_handler.create_frame(back_callback=self.show_training_frame)
+        
+        self.prediction_frame_handler.show()
+
+    def show_training_frame(self):
+        """Switch back to training frame"""
+        # Hide prediction frame
+        self.prediction_frame_handler.hide()
+        
+        # Show training frame
+        self.training_frame.pack(fill=tk.BOTH, expand=True)
+        self.update_status("Training Mode", "#2ecc71")    
     def create_metric_display(self, parent, label, row):
         frame = tk.Frame(parent, bg="#ecf0f1", relief=tk.RIDGE, borderwidth=2)
         frame.grid(row=row, column=0, sticky="ew", pady=5)
@@ -506,35 +552,35 @@ class FederatedClientGUI:
                 raise InterruptedError("Training stopped by user")
             
             self.log_message("Pulling global model...")
-            self.client.pull_global_model(self.server_url)
+            # self.client.pull_global_model(self.server_url)
             
-            if self.stop_requested:
-                raise InterruptedError("Training stopped by user")
+            # if self.stop_requested:
+            #     raise InterruptedError("Training stopped by user")
             
-            self.log_message("Loading global model...")
-            self.client.wait_for_global()
+            # self.log_message("Loading global model...")
+            # self.client.wait_for_global()
             
-            if self.stop_requested:
-                raise InterruptedError("Training stopped by user")
+            # if self.stop_requested:
+            #     raise InterruptedError("Training stopped by user")
             
-            self.log_message("Training locally...")
-            # Note: You might need to modify train_one_round to check self.stop_requested periodically
-            self.client.train_one_round()
+            # self.log_message("Training locally...")
+            # # Note: You might need to modify train_one_round to check self.stop_requested periodically
+            # self.client.train_one_round()
             
-            if self.stop_requested:
-                raise InterruptedError("Training stopped by user")
+            # if self.stop_requested:
+            #     raise InterruptedError("Training stopped by user")
             
-            # Read latest metrics
-            self.update_metrics_from_log()
+            # # Read latest metrics
+            # self.update_metrics_from_log()
             
-            if self.stop_requested:
-                raise InterruptedError("Training stopped by user")
+            # if self.stop_requested:
+            #     raise InterruptedError("Training stopped by user")
             
-            self.log_message("Saving checkpoint...")
-            local_model_path = self.client.save_local_checkpoint()
+            # self.log_message("Saving checkpoint...")
+            # local_model_path = self.client.save_local_checkpoint()
             
-            if self.stop_requested:
-                raise InterruptedError("Training stopped by user")
+            # if self.stop_requested:
+            #     raise InterruptedError("Training stopped by user")
             
             self.log_message("Sending update to server...")
             self.client.send_update(self.server_url,os.path.join('client_checkpoints',"round_1.pth"))

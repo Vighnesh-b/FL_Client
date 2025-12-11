@@ -102,6 +102,7 @@ class FederatedClient:
 
     def pull_global_model(self,federated_server_url):
         api_url = f"{federated_server_url}/api/get-global-model"
+        os.makedirs('global_models',exist_ok='True')
         local_save_path = "global_models/global_latest.pth"
         response = requests.get(api_url, stream=True)
         if response.status_code != 200:
